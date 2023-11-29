@@ -259,6 +259,9 @@ struct CheckRelease {
 
     #[command(flatten)]
     verbosity: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
+
+    #[arg(long)]
+    json: bool,
 }
 
 impl From<CheckRelease> for cargo_semver_checks::Check {
@@ -349,6 +352,8 @@ impl From<CheckRelease> for cargo_semver_checks::Check {
         trim_features(&mut baseline_features);
 
         check.with_extra_features(current_features, baseline_features);
+
+        check.output_json(value.json);
         check
     }
 }

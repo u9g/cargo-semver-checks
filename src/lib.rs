@@ -37,6 +37,7 @@ pub struct Check {
     release_type: Option<ReleaseType>,
     current_feature_config: rustdoc_gen::FeatureConfig,
     baseline_feature_config: rustdoc_gen::FeatureConfig,
+    pub output_json: bool,
 }
 
 /// The kind of release we're making.
@@ -235,6 +236,7 @@ impl Check {
             release_type: None,
             current_feature_config: rustdoc_gen::FeatureConfig::default_for_current(),
             baseline_feature_config: rustdoc_gen::FeatureConfig::default_for_baseline(),
+            output_json: false,
         }
     }
 
@@ -294,6 +296,11 @@ impl Check {
     ) -> &mut Self {
         self.current_feature_config.extra_features = extra_current_features;
         self.baseline_feature_config.extra_features = extra_baseline_features;
+        self
+    }
+
+    pub fn output_json(&mut self, output_json: bool) -> &mut Self {
+        self.output_json = output_json;
         self
     }
 
@@ -383,6 +390,8 @@ impl Check {
         let current_loader = self.get_rustdoc_generator(&mut config, &self.current.source)?;
         let baseline_loader = self.get_rustdoc_generator(&mut config, &self.baseline.source)?;
 
+        let mut queries_with_errors_to_output = vec![];
+
         // Create a report for each crate.
         // We want to run all the checks, even if one returns `Err`.
         let all_outcomes: Vec<anyhow::Result<(String, Option<CrateReport>)>> = match &self
@@ -433,7 +442,18 @@ impl Check {
                             current_crate,
                             baseline_crate,
                             self.release_type,
+                            &mut queries_with_errors_to_output,
                         )?;
+
+                        if self.output_json {
+                            std::fs::write(
+                                "./output.json",
+                                serde_json::to_string_pretty(&queries_with_errors_to_output)
+                                    .expect("couldn't serialize queries_with_errors_to_output to json string"),
+                            )
+                            .expect("couldn't write output.json file");
+                        }
+
                         Ok((name, Some(report)))
                     })
                     .collect()
@@ -496,6 +516,7 @@ impl Check {
                                     current_crate,
                                     baseline_crate,
                                     self.release_type,
+                                    &mut queries_with_errors_to_output,
                                 )?),
                             ))
                         }
@@ -513,6 +534,15 @@ impl Check {
             }
             reports
         };
+
+        if self.output_json {
+            std::fs::write(
+                "./output.json",
+                serde_json::to_string_pretty(&queries_with_errors_to_output)
+                    .expect("couldn't serialize queries_with_errors_to_output to json string"),
+            )
+            .expect("couldn't write output.json file");
+        }
 
         Ok(Report { crate_reports })
     }

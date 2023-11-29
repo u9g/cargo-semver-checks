@@ -78,12 +78,20 @@ fn classify_semver_version_change(
     }
 }
 
+#[derive(Default, serde::Serialize)]
+pub struct SemverError {
+    pub message: String,
+    pub file: String,
+    pub line: u32,
+}
+
 pub(super) fn run_check_release(
     config: &mut GlobalConfig,
     crate_name: &str,
     current_crate: VersionedCrate,
     baseline_crate: VersionedCrate,
     release_type: Option<ReleaseType>,
+    queries_with_errors_to_output: &mut Vec<SemverError>,
 ) -> anyhow::Result<CrateReport> {
     let current_version = current_crate.crate_version();
     let baseline_version = baseline_crate.crate_version();
@@ -311,6 +319,8 @@ pub(super) fn run_check_release(
                     .map(|(k, v)| (k, v.into()))
                     .collect();
 
+                let mut error = SemverError::default();
+
                 if let Some(template) = semver_query.per_result_error_template.as_deref() {
                     let message = config
                         .handlebars()
@@ -334,6 +344,17 @@ pub(super) fn run_check_release(
                             .map_err(|e| e.into())
                         })
                         .expect("print failed");
+
+                    error.message = message;
+                    error.file = match &pretty_result["span_filename"] {
+                        TransparentValue::String(str) => str.to_string(),
+                        _ => unreachable!(),
+                    };
+                    error.line = match &pretty_result["span_begin_line"] {
+                        TransparentValue::Uint64(num) => *num as u32,
+                        _ => unreachable!(),
+                    };
+                    queries_with_errors_to_output.push(error);
                 } else {
                     colored_ln(config.stdout(), |w| {
                         colored!(
